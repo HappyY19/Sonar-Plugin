@@ -82,15 +82,7 @@ public class CxConfigRestEndPoint implements WebService {
                     public void handle(Request request, Response response) {
                         try {
                             CxFullCredentials cxFullCredentials = getCredentialsFromRequest(request);
-                            logger.info("url: {}, username: {}, password: {}",
-                                    cxFullCredentials.getCxServerUrl(),
-                                    cxFullCredentials.getCxUsername(),
-                                    cxFullCredentials.getCxPassword());
                             setPasswordIfMissing(cxFullCredentials, request);
-                            logger.info("after set password, url: {}, username: {}, password: {}",
-                                    cxFullCredentials.getCxServerUrl(),
-                                    cxFullCredentials.getCxUsername(),
-                                    cxFullCredentials.getCxPassword());
                             validateCredentials(cxFullCredentials);
 
                             URL url = new URL(cxFullCredentials.getCxServerUrl());
@@ -108,23 +100,6 @@ public class CxConfigRestEndPoint implements WebService {
                                 ((HttpsURLConnection) urlConn).setHostnameVerifier(getHostnameVerifier());
                             }
 
-                            // ProxyParams proxyParam = HttpHelper.getProxyParam();
-                            // if (proxyParam == null) {
-                            // shraga = new CxSASTClient(cxFullCredentials.getCxServerUrl().trim(),
-                            // cxFullCredentials.getCxUsername(),
-                            // cxFullCredentials.getCxPassword(), CxSonarConstants.CX_SONAR_ORIGIN, true,
-                            // false, logger);
-                            // } else {
-                            // shraga = new CxSASTClient(cxFullCredentials.getCxServerUrl().trim(),
-                            // cxFullCredentials.getCxUsername(),
-                            // cxFullCredentials.getCxPassword(), CxSonarConstants.CX_SONAR_ORIGIN, true,
-                            // logger, true,
-                            // proxyParam.getHost(), proxyParam.getPort(), proxyParam.getUser(),
-                            // proxyParam.getPssd());
-                            // }
-                            // // final String cxVersion = shraga.getCxVersion();
-
-                            // shraga.login();
                             CxScanConfig config = new CxScanConfig(cxFullCredentials.getCxServerUrl().trim(),
                                     cxFullCredentials.getCxUsername(),
                                     cxFullCredentials.getCxPassword(),
