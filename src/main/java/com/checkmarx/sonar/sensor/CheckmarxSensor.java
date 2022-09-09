@@ -28,7 +28,7 @@ import com.checkmarx.sonar.sensor.version.PluginVersionProvider;
 import com.checkmarx.sonar.settings.CxProperties;
 import com.checkmarx.sonar.web.HttpHelper;
 import com.checkmarx.sonar.web.ProxyParams;
-import com.cx.restclient.CxShragaClient;
+import com.cx.restclient.CxClientDelegator;
 import com.cx.restclient.configuration.CxScanConfig;
 import com.cx.restclient.exception.CxClientException;
 import com.cx.restclient.sast.dto.CxXMLResults;
@@ -36,6 +36,7 @@ import com.cx.restclient.sast.dto.SASTResults;
 import com.cx.restclient.sast.utils.SASTUtils;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.checkmarx.sonar.cxrules.CxSonarConstants;
 
 /**
  * Created by: Zoharby.
@@ -47,7 +48,7 @@ public class CheckmarxSensor implements Sensor {
     private PluginVersionProvider versionProvider = new PluginVersionProvider();
     private ObjectMapper mapper = new ObjectMapper();
     private SastResultsCollector sastResultsCollector = new SastResultsCollector();
-    private CxShragaClient shraga = null;
+    private CxClientDelegator shraga = null;
 
     static {
         System.setProperty("https.protocols", "TLSv1,TLSv1.1,TLSv1.2");
@@ -79,13 +80,19 @@ public class CheckmarxSensor implements Sensor {
             logger.info("Connecting to {}", config.getUrl());
             ProxyParams proxyParam = HttpHelper.getProxyParam();
             if (proxyParam == null) {
-                shraga = new CxShragaClient(config, false, logger);
+                shraga = new CxClientDelegator(config, logger);
             } else {
-                shraga = new CxShragaClient(config, logger, proxyParam.getHost(), proxyParam.getPort(), proxyParam.getUser(), proxyParam.getPssd(), true);
+                shraga = new CxClientDelegator(
+                        proxyParam.getHost() + ":" + proxyParam.getPort(),
+                        proxyParam.getUser(),
+                        proxyParam.getPssd(),
+                        CxSonarConstants.CX_SONAR_ORIGIN,
+                        true,
+                        logger);
             }
 
             shraga.init();
-            SASTResults latestSASTResults = shraga.getLatestSASTResults();
+            SASTResults latestSASTResults = shraga.getLatestScanResults().getSastResults();
             logger.info("Checkmarx High vulnerabilities: " + latestSASTResults.getHigh());
             logger.info("Checkmarx New-High vulnerabilities: " + latestSASTResults.getNewHigh());
             logger.info("Checkmarx Medium vulnerabilities: " + latestSASTResults.getMedium());
@@ -94,14 +101,15 @@ public class CheckmarxSensor implements Sensor {
             logger.info("Checkmarx New-Low vulnerabilities: " + latestSASTResults.getNewLow());
             logger.info("Checkmarx scan link: " + latestSASTResults.getSastScanLink());
 
-//            shraga.generateHTMLSummary(latestSASTResults, new OSAResults());
+            // shraga.generateHTMLSummary(latestSASTResults, new OSAResults());
             CxXMLResults cxXMLResults = convertToXMLResult(latestSASTResults.getRawXMLReport());
             CxReportToSonarReport cxReportToSonarReport = CxResultsAdapter.adaptCxXmlResultsForSonar(cxXMLResults);
 
             sastResultsCollector.collectVulnerabilitiesAndSaveToMetrics(context, cxReportToSonarReport);
             notifyComputeSatMeasuresSonarProjectHaveSastResults(context);
 
-            SastReportData sastReportData = CxResultsAdapter.adaptCxXmlResultsToCxDetailReport(cxXMLResults, cxCredentials);
+            SastReportData sastReportData = CxResultsAdapter.adaptCxXmlResultsToCxDetailReport(cxXMLResults,
+                    cxCredentials);
             saveSastForDetailReport(context, sastReportData);
 
             logger.info("Sast results retrieval finished.");
@@ -118,10 +126,13 @@ public class CheckmarxSensor implements Sensor {
         Iterable<InputFile> mainfiles = getMainFiles(context);
         for (InputFile file : mainfiles) {
             context.<Integer>newMeasure().on(file).forMetric(SONAR_PROJECT_HAVE_SAST_RESULTS).withValue(1).save();
-            /*String prjPath = ((DefaultInputFile) file).getProjectRelativePath();
-            String mdlPath = ((DefaultInputFile) file).getModuleRelativePath();
-            String absPath = ((DefaultInputFile) file).absolutePath();
-            logger.info("Sonar project have SAST results metric on file:\nProject path: " + prjPath + "\nModule path: " + mdlPath + "\nAbsolute path: " + absPath);*/
+            /*
+             * String prjPath = ((DefaultInputFile) file).getProjectRelativePath();
+             * String mdlPath = ((DefaultInputFile) file).getModuleRelativePath();
+             * String absPath = ((DefaultInputFile) file).absolutePath();
+             * logger.info("Sonar project have SAST results metric on file:\nProject path: "
+             * + prjPath + "\nModule path: " + mdlPath + "\nAbsolute path: " + absPath);
+             */
         }
     }
 
@@ -138,13 +149,15 @@ public class CheckmarxSensor implements Sensor {
         return mainFiles;
     }
 
-    private void saveSastForDetailReport(SensorContext context, SastReportData sastReportData) throws JsonProcessingException {
+    private void saveSastForDetailReport(SensorContext context, SastReportData sastReportData)
+            throws JsonProcessingException {
         String scanDetails = mapper.writeValueAsString(sastReportData);
         context.<String>newMeasure().on(context.module()).forMetric(SAST_SCAN_DETAILS).withValue(scanDetails).save();
         logger.info("Scan report details: " + scanDetails);
     }
 
-    private com.cx.restclient.sast.dto.CxXMLResults convertToXMLResult(byte[] cxReport) throws IOException, JAXBException, CxClientException {
+    private com.cx.restclient.sast.dto.CxXMLResults convertToXMLResult(byte[] cxReport)
+            throws IOException, JAXBException, CxClientException {
         return SASTUtils.convertToXMLResult(cxReport);
     }
 

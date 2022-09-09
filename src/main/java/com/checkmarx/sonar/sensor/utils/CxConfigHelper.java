@@ -13,9 +13,10 @@ import com.checkmarx.sonar.settings.CxProperties;
 import com.checkmarx.sonar.settings.PropertyApiClient;
 import com.checkmarx.sonar.web.HttpHelper;
 import com.checkmarx.sonar.web.ProxyParams;
-import com.cx.restclient.CxShragaClient;
+import com.cx.restclient.CxSASTClient;
 import com.cx.restclient.configuration.CxScanConfig;
 import com.cx.restclient.exception.CxClientException;
+import com.cx.restclient.dto.ProxyConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.commons.codec.binary.Base64;
 import org.apache.commons.lang3.StringUtils;
@@ -28,6 +29,7 @@ import org.apache.http.client.utils.HttpClientUtils;
 import org.apache.http.impl.client.HttpClientBuilder;
 import org.apache.http.util.EntityUtils;
 import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.sonar.api.batch.sensor.SensorContext;
 import org.sonar.api.config.Configuration;
 
@@ -81,14 +83,16 @@ public class CxConfigHelper {
                 String plaintextPassword = decrypt(credentials.getCxPassword());
                 credentials.setCxPassword(plaintextPassword);
             } else {
-                logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE + "Error while retrieving Checkmarx settings from Sonar database.\n" +
+                logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE
+                        + "Error while retrieving Checkmarx settings from Sonar database.\n" +
                         "Please make sure Checkmarx credentials are configured. Can be configured by admin at: " +
                         "Project Page > Administration > Checkmarx\n", context);
             }
 
             return credentials;
         } catch (IOException e) {
-            logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE + "Error while getting credentials: " + e.getMessage(), context);
+            logErrorAndNotifyContext(
+                    CxSonarConstants.CANCEL_MESSAGE + "Error while getting credentials: " + e.getMessage(), context);
             return null;
         }
     }
@@ -113,7 +117,8 @@ public class CxConfigHelper {
         } else {
             result = new CxFullCredentials();
         }
-        log.info("Stored credentials username: " + result.getCxUsername() + ", encrypted password: " + result.getCxPassword());
+        log.info("Stored credentials username: " + result.getCxUsername() + ", encrypted password: "
+                + result.getCxPassword());
         return result;
     }
 
@@ -124,12 +129,14 @@ public class CxConfigHelper {
         String propertyValue = getSonarPropertyHttp(propertyName, config);
 
         if (propertyValue == null) {
-            logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE + "Error while retrieving Checkmarx settings from sonar Database.\n" + "" +
+            logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE
+                    + "Error while retrieving Checkmarx settings from sonar Database.\n" + "" +
                     "Please make sure Checkmarx credentials are configured.", context);
             return null;
         }
         if (StringUtils.isEmpty(propertyValue)) {
-            logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE + "Checkmarx settings were not configured.\n Can be configured by admin at: " +
+            logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE
+                    + "Checkmarx settings were not configured.\n Can be configured by admin at: " +
                     "Project Page > Administration > Checkmarx\n", context);
             return null;
         }
@@ -142,7 +149,7 @@ public class CxConfigHelper {
         CxScanConfig scanConfig = new CxScanConfig();
         scanConfig.setCxOrigin(CxSonarConstants.CX_SONAR_ORIGIN);
         scanConfig.setSastEnabled(true);
-        scanConfig.setOsaEnabled(false);
+        // scanConfig.setOsaEnabled(false);
         scanConfig.setSynchronous(true);
         scanConfig.setDisableCertificateValidation(true);
         scanConfig.setUrl(cxFullCredentials.getCxServerUrl());
@@ -156,24 +163,26 @@ public class CxConfigHelper {
             scanConfig.setTeamId(projectDetails.getTeamId());
             scanConfig.setTeamPath(projectDetails.getTeamName());
         } catch (IOException e) {
-            logErrorAndNotifyContext(CxSonarConstants.CANCEL_MESSAGE + "Error while retrieving team ID for project:" + cxProject, context);
+            logErrorAndNotifyContext(
+                    CxSonarConstants.CANCEL_MESSAGE + "Error while retrieving team ID for project:" + cxProject,
+                    context);
             return scanConfig;
         }
         return scanConfig;
     }
 
     private String getPropertyValue(String responseJson) {
-    	
-    	CxSensorSettings settings = null;
-    	try {
+
+        CxSensorSettings settings = null;
+        try {
             if (StringUtils.isNotEmpty(responseJson)) {
-            	settings = objectMapper.readValue(responseJson, CxSensorSettings.class);
-            	return settings.getFirstSettingValue();
-            }    		
-    	}catch(Exception tryNextLogic) {
-    		   log.debug("Fail to retrieve property value using Json");
-    	}    	
-    	
+                settings = objectMapper.readValue(responseJson, CxSensorSettings.class);
+                return settings.getFirstSettingValue();
+            }
+        } catch (Exception tryNextLogic) {
+            log.debug("Fail to retrieve property value using Json");
+        }
+
         String value = null;
         try {
             int valueIdx = responseJson.indexOf(VALUE);
@@ -185,13 +194,14 @@ public class CxConfigHelper {
         }
         return value;
     }
-       
-    private ProjectDetails getProjectAndTeamDetails(String cxProject, CxFullCredentials cxFullCredentials) throws IOException {
-		
-		  String teamName =  cxProject.substring(cxProject.indexOf("\\") + 1, cxProject.lastIndexOf("\\"));
-		  teamName = "/" + teamName ;
-		 
-        log.info("Team name parsed from the projectName: "+teamName);
+
+    private ProjectDetails getProjectAndTeamDetails(String cxProject, CxFullCredentials cxFullCredentials)
+            throws IOException {
+
+        String teamName = cxProject.substring(cxProject.indexOf("\\") + 1, cxProject.lastIndexOf("\\"));
+        teamName = "/" + teamName;
+
+        log.info("Team name parsed from the projectName: " + teamName);
         ProjectDetails projectDetails = new ProjectDetails();
         projectDetails.setTeamName(teamName);
         projectDetails.setTeamId(getTeamId(teamName, cxFullCredentials));
@@ -256,7 +266,7 @@ public class CxConfigHelper {
             }
             return "";
         } catch (IOException e) {
-        	log.warn("Error occured while retrieving property value for property: "+propertyName);
+            log.warn("Error occured while retrieving property value for property: " + propertyName);
             return null;
         } finally {
             if (response != null) {
@@ -288,40 +298,34 @@ public class CxConfigHelper {
         while ((line = rd.readLine()) != null) {
             result.append(line);
         }
-        
-        
+
         return result.toString();
     }
 
     private String getTeamId(String teamName, CxFullCredentials cxFullCredentials) throws IOException {
         String teamId;
-        try {
-            CxShragaClient shraga;
-            ProxyParams proxyParam = HttpHelper.getProxyParam();
-            if (proxyParam == null) {
-                shraga = new CxShragaClient(
-                        cxFullCredentials.getCxServerUrl().trim(),
-                        cxFullCredentials.getCxUsername(),
-                        cxFullCredentials.getCxPassword(),
-                        CxSonarConstants.CX_SONAR_ORIGIN,
-                        true,
-                        false,
-                        log);
-            } else {
-                shraga = new CxShragaClient(
-                        cxFullCredentials.getCxServerUrl().trim(),
-                        cxFullCredentials.getCxUsername(),
-                        cxFullCredentials.getCxPassword(),
-                        CxSonarConstants.CX_SONAR_ORIGIN,
-                        true,
-                        log,
-                        true,
-                        proxyParam.getHost(),
-                        proxyParam.getPort(),
-                        proxyParam.getUser(),
-                        proxyParam.getPssd());
-            }
+        Logger logger = LoggerFactory.getLogger(CxConfigHelper.class);
+        CxScanConfig config = new CxScanConfig(cxFullCredentials.getCxServerUrl().trim(),
+                cxFullCredentials.getCxUsername(),
+                cxFullCredentials.getCxPassword(),
+                CxSonarConstants.CX_SONAR_ORIGIN,
+                true);
 
+        try {
+            CxSASTClient shraga;
+            ProxyParams proxyParam = HttpHelper.getProxyParam();
+            String proxyHost = proxyParam.getHost();
+            ProxyConfig proxyConfig = new ProxyConfig(
+                    proxyHost,
+                    proxyParam.getPort(),
+                    proxyParam.getUser(),
+                    proxyParam.getPssd(),
+                    proxyHost.toLowerCase().startsWith("https"));
+
+            if (proxyParam != null) {
+                config.setProxyConfig(proxyConfig);
+            }
+            shraga = new CxSASTClient(config, logger);
             shraga.login();
 
             teamId = shraga.getTeamIdByName(teamName);
@@ -388,8 +392,8 @@ public class CxConfigHelper {
     }
 
     private static String resolveSonarUrl(String sonarBaseUrl) {
-        String url = StringUtils.isNotEmpty(System.getenv(SONAR_URL_PARAM)) ?
-                System.getenv(SONAR_URL_PARAM) : System.getProperty(SONAR_URL_PARAM);
+        String url = StringUtils.isNotEmpty(System.getenv(SONAR_URL_PARAM)) ? System.getenv(SONAR_URL_PARAM)
+                : System.getProperty(SONAR_URL_PARAM);
 
         return StringUtils.isNotEmpty(url) ? url.trim() : sonarBaseUrl;
     }

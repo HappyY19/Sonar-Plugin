@@ -4,9 +4,11 @@ import com.checkmarx.sonar.cxrules.CxSonarConstants;
 import com.checkmarx.sonar.dto.CxFullCredentials;
 import com.checkmarx.sonar.dto.RestEndpointContext;
 import com.checkmarx.sonar.sensor.utils.CxConfigHelper;
-import com.cx.restclient.CxShragaClient;
+import com.cx.restclient.CxSASTClient;
+import com.cx.restclient.dto.ProxyConfig;
 import com.cx.restclient.exception.CxClientException;
 import com.cx.restclient.sast.dto.Project;
+import com.cx.restclient.configuration.CxScanConfig;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.http.Header;
 import org.apache.http.conn.ssl.TrustAllStrategy;
@@ -56,7 +58,7 @@ public class CxConfigRestEndPoint implements WebService {
 
     private Logger logger = LoggerFactory.getLogger(CxConfigRestEndPoint.class);
 
-    private CxShragaClient shraga;
+    private CxSASTClient shraga;
 
     private final ObjectMapper objectMapper = new ObjectMapper();
     private static final String PROJECTS = "projects";
@@ -80,8 +82,15 @@ public class CxConfigRestEndPoint implements WebService {
                     public void handle(Request request, Response response) {
                         try {
                             CxFullCredentials cxFullCredentials = getCredentialsFromRequest(request);
+                            logger.info("url: {}, username: {}, password: {}",
+                                    cxFullCredentials.getCxServerUrl(),
+                                    cxFullCredentials.getCxUsername(),
+                                    cxFullCredentials.getCxPassword());
                             setPasswordIfMissing(cxFullCredentials, request);
-
+                            logger.info("after set password, url: {}, username: {}, password: {}",
+                                    cxFullCredentials.getCxServerUrl(),
+                                    cxFullCredentials.getCxUsername(),
+                                    cxFullCredentials.getCxPassword());
                             validateCredentials(cxFullCredentials);
 
                             URL url = new URL(cxFullCredentials.getCxServerUrl());
@@ -99,17 +108,41 @@ public class CxConfigRestEndPoint implements WebService {
                                 ((HttpsURLConnection) urlConn).setHostnameVerifier(getHostnameVerifier());
                             }
 
-                            ProxyParams proxyParam = HttpHelper.getProxyParam();
-                            if (proxyParam == null) {
-                                shraga = new CxShragaClient(cxFullCredentials.getCxServerUrl().trim(), cxFullCredentials.getCxUsername(),
-                                        cxFullCredentials.getCxPassword(), CxSonarConstants.CX_SONAR_ORIGIN, true, false, logger);
-                            } else {
-                                shraga = new CxShragaClient(cxFullCredentials.getCxServerUrl().trim(), cxFullCredentials.getCxUsername(),
-                                        cxFullCredentials.getCxPassword(), CxSonarConstants.CX_SONAR_ORIGIN, true, logger, true,
-                                        proxyParam.getHost(), proxyParam.getPort(), proxyParam.getUser(), proxyParam.getPssd());
-                            }
-                            //  final String cxVersion = shraga.getCxVersion();
+                            // ProxyParams proxyParam = HttpHelper.getProxyParam();
+                            // if (proxyParam == null) {
+                            // shraga = new CxSASTClient(cxFullCredentials.getCxServerUrl().trim(),
+                            // cxFullCredentials.getCxUsername(),
+                            // cxFullCredentials.getCxPassword(), CxSonarConstants.CX_SONAR_ORIGIN, true,
+                            // false, logger);
+                            // } else {
+                            // shraga = new CxSASTClient(cxFullCredentials.getCxServerUrl().trim(),
+                            // cxFullCredentials.getCxUsername(),
+                            // cxFullCredentials.getCxPassword(), CxSonarConstants.CX_SONAR_ORIGIN, true,
+                            // logger, true,
+                            // proxyParam.getHost(), proxyParam.getPort(), proxyParam.getUser(),
+                            // proxyParam.getPssd());
+                            // }
+                            // // final String cxVersion = shraga.getCxVersion();
 
+                            // shraga.login();
+                            CxScanConfig config = new CxScanConfig(cxFullCredentials.getCxServerUrl().trim(),
+                                    cxFullCredentials.getCxUsername(),
+                                    cxFullCredentials.getCxPassword(),
+                                    CxSonarConstants.CX_SONAR_ORIGIN,
+                                    true);
+
+                            ProxyParams proxyParam = HttpHelper.getProxyParam();
+                            if (proxyParam != null) {
+                                String proxyHost = proxyParam.getHost();
+                                ProxyConfig proxyConfig = new ProxyConfig(
+                                        proxyHost,
+                                        proxyParam.getPort(),
+                                        proxyParam.getUser(),
+                                        proxyParam.getPssd(),
+                                        proxyHost.toLowerCase().startsWith("https"));
+                                config.setProxyConfig(proxyConfig);
+                            }
+                            shraga = new CxSASTClient(config, logger);
                             shraga.login();
                             urlConn.connect();
 
@@ -125,7 +158,8 @@ public class CxConfigRestEndPoint implements WebService {
 
         controller.createAction(PROJECTS)
                 .setPost(true)
-                .setDescription("Return projects of default Checkmarx server (the server that was configured by SonarQube administrator).")
+                .setDescription(
+                        "Return projects of default Checkmarx server (the server that was configured by SonarQube administrator).")
                 .setInternal(true)
                 .setHandler(new RequestHandler() {
                     @Override
@@ -155,7 +189,8 @@ public class CxConfigRestEndPoint implements WebService {
 
         controller.createAction("clean_connection")
                 .setPost(true)
-                .setDescription("Close connection of default Checkmarx server (the server that was configured by SonarQube administrator).")
+                .setDescription(
+                        "Close connection of default Checkmarx server (the server that was configured by SonarQube administrator).")
                 .setInternal(true)
                 .setHandler(new RequestHandler() {
                     @Override
@@ -184,7 +219,7 @@ public class CxConfigRestEndPoint implements WebService {
         updateCredentials.createParam(COMPONENT_KEY_PARAM).setRequired(true);
         updateCredentials.createParam(CREDENTIALS_PARAM).setRequired(true);
 
-        //apply changes
+        // apply changes
         controller.done();
     }
 
@@ -272,9 +307,12 @@ public class CxConfigRestEndPoint implements WebService {
         }
     }
 
-    private void setPasswordIfMissing(CxFullCredentials credentialsFromRequest, Request request) throws URISyntaxException, IOException {
-        // If user hasn't changed the password, the password is null in cxFullCredentials.
-        // However, we need the password to test connection => get the password from config.
+    private void setPasswordIfMissing(CxFullCredentials credentialsFromRequest, Request request)
+            throws URISyntaxException, IOException {
+        // If user hasn't changed the password, the password is null in
+        // cxFullCredentials.
+        // However, we need the password to test connection => get the password from
+        // config.
         if (credentialsFromRequest != null && credentialsFromRequest.getCxPassword() == null) {
             RestEndpointContext context = getRestEndpointContext(request);
 
@@ -344,7 +382,7 @@ public class CxConfigRestEndPoint implements WebService {
 
         String headerValue = request.header(REQUIRED_HEADER_NAME).orElse("");
         Header requiredHeader = new BasicHeader(REQUIRED_HEADER_NAME, headerValue);
-        return new Header[]{requiredHeader};
+        return new Header[] { requiredHeader };
     }
 
     private void validateCredentials(CxFullCredentials cxFullCredentials) throws IOException {
