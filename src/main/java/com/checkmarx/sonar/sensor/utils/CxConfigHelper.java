@@ -199,7 +199,7 @@ public class CxConfigHelper {
             throws IOException {
 
         String teamName = cxProject.substring(cxProject.indexOf("\\") + 1, cxProject.lastIndexOf("\\"));
-        teamName = "/" + teamName;
+        teamName = "\\" + teamName;
 
         log.info("Team name parsed from the projectName: " + teamName);
         ProjectDetails projectDetails = new ProjectDetails();
@@ -314,15 +314,15 @@ public class CxConfigHelper {
         try {
             CxSASTClient shraga;
             ProxyParams proxyParam = HttpHelper.getProxyParam();
-            String proxyHost = proxyParam.getHost();
-            ProxyConfig proxyConfig = new ProxyConfig(
-                    proxyHost,
-                    proxyParam.getPort(),
-                    proxyParam.getUser(),
-                    proxyParam.getPssd(),
-                    proxyHost.toLowerCase().startsWith("https"));
-
             if (proxyParam != null) {
+                String proxyHost = proxyParam.getHost();
+                ProxyConfig proxyConfig = new ProxyConfig(
+                        proxyHost,
+                        proxyParam.getPort(),
+                        proxyParam.getUser(),
+                        proxyParam.getPssd(),
+                        proxyHost.toLowerCase().startsWith("https"));
+
                 config.setProxyConfig(proxyConfig);
             }
             shraga = new CxSASTClient(config, logger);
